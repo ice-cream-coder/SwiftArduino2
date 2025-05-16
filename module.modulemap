@@ -1,0 +1,5 @@
+module IRremote {
+    umbrella header "/Users/icecream/Documents/Arduino/libraries/IRremote/src/IRremote.h"
+    export *
+    module * { export * }
+} 

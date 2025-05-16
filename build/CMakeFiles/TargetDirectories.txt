@@ -1,0 +1,4 @@
+/Users/icecream/Code/ArduinoExplorationSwift/build/CMakeFiles/arduino_core.dir
+/Users/icecream/Code/ArduinoExplorationSwift/build/CMakeFiles/DummyAVRTest.dir
+/Users/icecream/Code/ArduinoExplorationSwift/build/CMakeFiles/edit_cache.dir
+/Users/icecream/Code/ArduinoExplorationSwift/build/CMakeFiles/rebuild_cache.dir
