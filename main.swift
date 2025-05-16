@@ -1,5 +1,8 @@
-import Foundation
 import IRremote
 
-// Basic test to ensure we can access the IRremote module
-print("Successfully imported IRremote module")
+// Minimal Swift code for AVR testing
+func start() {
+    // We will try to call something from IRremote here later
+}
+
+start()

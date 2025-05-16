@@ -73,48 +73,101 @@ set_target_properties(DummyAVRTest PROPERTIES
 add_avr_hex(DummyAVRTest)
 
 # ---------------------------------------- #
-# Swift support - separate from AVR builds #
+# Swift support using swiftc directly      #
 # ---------------------------------------- #
 
-# Only add Swift targets if we're using a compatible generator
-if(SWIFT_SUPPORTED)
-    # Create Swift module map for C++ interop
-    set(CMAKE_Swift_MODULE_NAME "IRremote")
-    set(CMAKE_Swift_MODULE_MAP "${CMAKE_CURRENT_BINARY_DIR}/module.modulemap")
+# Ensure the module map is copied to the build directory
+# The original module.modulemap is in ${CMAKE_SOURCE_DIR}/module.modulemap
+configure_file(
+    ${CMAKE_SOURCE_DIR}/module.modulemap
+    ${CMAKE_CURRENT_BINARY_DIR}/module.modulemap
+    COPYONLY
+)
 
-    # Generate module map
-    file(WRITE ${CMAKE_Swift_MODULE_MAP} "module IRremote {
-        umbrella header \"${ARDUINO_LIBRARIES_PATH}/IRremote/src/IRremote.h\"
-        export *
-        module * { export * }
-    }")
+# Define the Swift source file
+set(SWIFT_SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/main.swift)
+set(SWIFT_OUTPUT_IR ${CMAKE_CURRENT_BINARY_DIR}/main.ll)
+set(SWIFT_MODULE_NAME main) # Or your desired module name for the .swiftmodule
 
-    # Copy module map to build directory
-    configure_file(${CMAKE_SOURCE_DIR}/module.modulemap ${CMAKE_BINARY_DIR}/module.modulemap COPYONLY)
+# Add custom target for Swift to LLVM IR compilation
+add_custom_command(
+    OUTPUT ${SWIFT_OUTPUT_IR}
+    COMMAND swiftc
+        -module-name ${SWIFT_MODULE_NAME}
+        ${SWIFT_SOURCE_FILE}
+        -enable-experimental-feature Embedded
+        -wmo
+        # Attempting a different AVR target triple
+        -target avr-unknown-none # Based on some older forum discussions, though may not be recognized
+        -Xcc -mmcu=atmega328p # Pass MCU to Clang
+        -Xllvm -mcpu=atmega328p # Pass MCU to LLVM backend
+        -emit-ir
+        -o ${SWIFT_OUTPUT_IR}
+        # Include path for the module map itself (in build dir)
+        -I ${CMAKE_CURRENT_BINARY_DIR}
+        # Include path for IRRemote headers (for Swift compiler)
+        -I ${ARDUINO_LIBRARIES_PATH}/IRremote/src
+        # Pass include path for IRRemote headers to Clang importer
+        -Xcc -I${ARDUINO_LIBRARIES_PATH}/IRremote/src
+        # Pass module map file to Clang importer
+        -Xcc -fmodule-map-file=${CMAKE_CURRENT_BINARY_DIR}/module.modulemap
+        # Add other necessary Swift flags:
+        # -L /path/to/compiled/cpp/libs (for linking, if not just IR)
+        # -l<cpp_lib_name> (for linking)
+        # -sdk <path_to_sdk> (if a specific SDK is needed for AVR)
+        # -nostdlib (if we provide all basics or if embedded mode handles it)
+    DEPENDS 
+        ${SWIFT_SOURCE_FILE} 
+        ${CMAKE_CURRENT_BINARY_DIR}/module.modulemap
+        arduino_core # Depends on arduino_core being built (provides headers/libs eventually)
+        irremote     # Depends on irremote interface library (provides headers)
+    COMMENT "Compiling Swift (${SWIFT_SOURCE_FILE}) to LLVM IR (${SWIFT_OUTPUT_IR})"
+    VERBATIM
+)
 
-    # Add Swift executable (this will use the host compiler, not AVR)
-    add_executable(SwiftIRTest main.swift)
+add_custom_target(SwiftToIR ALL
+    DEPENDS ${SWIFT_OUTPUT_IR}
+)
 
-    # Set Swift compiler flags for LLVM IR generation
-    set_target_properties(SwiftIRTest PROPERTIES
-        Swift_COMPILATION_MODE single-file
-        Swift_IMPORT_PATHS "${CMAKE_CURRENT_BINARY_DIR}"
-    )
-
-    # Add Swift compile flags for LLVM IR generation
-    target_compile_options(SwiftIRTest PRIVATE
-        $<$<COMPILE_LANGUAGE:Swift>:
-            -Xcc -fmodule-map-file=${CMAKE_BINARY_DIR}/module.modulemap
-            -Xcc -I${ARDUINO_LIBRARIES_PATH}/IRremote/src
-            -emit-ir
-        >
-    )
-
-    # Add a custom target to further process the Swift IR for AVR
-    add_custom_command(
-        TARGET SwiftIRTest
-        POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "SwiftIRTest compiled to LLVM IR. Next step: Process for AVR target."
-        COMMENT "Swift IR generation completed"
-    )
-endif() 
+# Comment out or remove the old generator-dependent Swift block
+# if(SWIFT_SUPPORTED)
+#     # Create Swift module map for C++ interop
+#     set(CMAKE_Swift_MODULE_NAME "IRremote")
+#     set(CMAKE_Swift_MODULE_MAP "${CMAKE_CURRENT_BINARY_DIR}/module.modulemap")
+# 
+#     # Generate module map
+#     file(WRITE ${CMAKE_Swift_MODULE_MAP} "module IRremote {
+#         umbrella header \"${ARDUINO_LIBRARIES_PATH}/IRremote/src/IRremote.h\"
+#         export *
+#         module * { export * }
+#     }")
+# 
+#     # Copy module map to build directory
+#     # configure_file(${CMAKE_SOURCE_DIR}/module.modulemap ${CMAKE_BINARY_DIR}/module.modulemap COPYONLY) # Already done above
+# 
+#     # Add Swift executable (this will use the host compiler, not AVR)
+#     add_executable(SwiftIRTest main.swift)
+# 
+#     # Set Swift compiler flags for LLVM IR generation
+#     set_target_properties(SwiftIRTest PROPERTIES
+#         Swift_COMPILATION_MODE single-file
+#         Swift_IMPORT_PATHS "${CMAKE_CURRENT_BINARY_DIR}"
+#     )
+# 
+#     # Add Swift compile flags for LLVM IR generation
+#     target_compile_options(SwiftIRTest PRIVATE
+#         $<$<COMPILE_LANGUAGE:Swift>:
+#             -Xcc -fmodule-map-file=${CMAKE_BINARY_DIR}/module.modulemap
+#             -Xcc -I${ARDUINO_LIBRARIES_PATH}/IRremote/src
+#             -emit-ir
+#         >
+#     )
+# 
+#     # Add a custom target to further process the Swift IR for AVR
+#     add_custom_command(
+#         TARGET SwiftIRTest
+#         POST_BUILD
+#         COMMAND ${CMAKE_COMMAND} -E echo "SwiftIRTest compiled to LLVM IR. Next step: Process for AVR target."
+#         COMMENT "Swift IR generation completed"
+#     )
+# endif() 
